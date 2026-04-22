@@ -1,0 +1,572 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>KameraIOT Kontrol Paneli</title>
+<script src="https://unpkg.com/mqtt/dist/mqtt.min.js"></script>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg:#0a0a0a;--card:#141414;--card2:#1a1a1a;--border:#2a2a2a;
+  --text:#e5e5e5;--muted:#71717a;--accent:#f59e0b;--accent-dim:#78350f;
+  --ok:#22c55e;--err:#ef4444;--warn:#fbbf24;
+}
+body{font-family:-apple-system,system-ui,sans-serif;background:var(--bg);color:var(--text);padding:16px;min-height:100vh}
+.wrap{max-width:760px;margin:0 auto}
+header{display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;padding-bottom:14px;border-bottom:1px solid var(--border)}
+h1{color:var(--accent);font-size:22px}
+.conn{display:flex;align-items:center;gap:8px;font-size:13px}
+.dot{width:8px;height:8px;border-radius:50%;background:var(--err)}
+.dot.on{background:var(--ok);box-shadow:0 0 8px var(--ok)}
+.card{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:16px;margin-bottom:14px}
+.card h2{color:var(--accent);font-size:14px;margin-bottom:12px;display:flex;justify-content:space-between;align-items:center;cursor:pointer;user-select:none}
+.card h2::after{content:'▾';font-size:12px}
+.card.collapsed h2::after{content:'▸'}
+.card.collapsed .body{display:none}
+label{display:block;font-size:12px;color:var(--muted);margin:10px 0 4px}
+label:first-child{margin-top:0}
+input,select{width:100%;padding:9px 10px;background:var(--card2);border:1px solid #3a3a3a;color:var(--text);border-radius:7px;font-size:14px;font-family:inherit}
+input:focus,select:focus{outline:none;border-color:var(--accent)}
+.row{display:flex;gap:8px}.row>*{flex:1}
+.btn{display:inline-block;padding:10px 16px;border:none;border-radius:8px;font-size:14px;font-weight:600;cursor:pointer;background:var(--accent);color:#000}
+.btn:active{opacity:.7}
+.btn.sm{padding:6px 12px;font-size:12px}
+.btn.secondary{background:#333;color:var(--text)}
+.btn.danger{background:var(--err);color:#fff}
+.btn.full{display:block;width:100%}
+.st{display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid var(--border);font-size:13px}
+.st:last-child{border:none}
+.st .l{color:var(--muted)}.st .v{font-weight:600}
+.badge{padding:2px 8px;border-radius:4px;font-size:11px;font-weight:700}
+.badge.ok{background:#064e3b;color:#6ee7b7}.badge.err{background:#7f1d1d;color:#fca5a5}
+.badge.warn{background:var(--accent-dim);color:var(--accent)}
+.item{background:var(--card2);border:1px solid var(--border);border-radius:10px;padding:12px;margin-bottom:10px}
+.item h3{font-size:14px;color:var(--accent);margin-bottom:8px;display:flex;justify-content:space-between;align-items:center;gap:8px}
+.item h3 .actions{display:flex;gap:6px;flex-shrink:0}
+.add-btn{display:block;width:100%;padding:12px;background:transparent;border:1px dashed var(--border);color:var(--muted);border-radius:8px;cursor:pointer;font-size:13px;margin-top:8px}
+.add-btn:hover{border-color:var(--accent);color:var(--accent)}
+.modal-bg{position:fixed;inset:0;background:rgba(0,0,0,.8);display:none;align-items:center;justify-content:center;z-index:100;padding:20px}
+.modal-bg.show{display:flex}
+.modal{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:20px;max-width:520px;width:100%;max-height:90vh;overflow-y:auto}
+.modal h3{color:var(--accent);margin-bottom:14px}
+.modal .actions{display:flex;gap:8px;margin-top:18px}
+.modal .actions>*{flex:1}
+.toast{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);padding:12px 20px;background:var(--card);border:1px solid var(--border);border-radius:8px;font-size:14px;z-index:200;opacity:0;transition:opacity .3s}
+.toast.show{opacity:1}
+.toast.ok{border-color:var(--ok)}.toast.err{border-color:var(--err)}.toast.warn{border-color:var(--warn)}
+.setup-card{text-align:center;padding:30px 20px}
+.setup-card p{color:var(--muted);margin:12px 0 20px;font-size:13px}
+.hint{font-size:11px;color:var(--muted);margin-top:4px}
+.checklist{background:var(--card2);border:1px solid var(--border);border-radius:8px;padding:10px;margin-top:8px;max-height:200px;overflow-y:auto}
+.check-item{display:flex;align-items:center;gap:8px;padding:6px 0;font-size:13px;cursor:pointer}
+.check-item input{width:auto;margin:0}
+.empty{text-align:center;color:var(--muted);padding:20px;font-size:13px}
+.section-header{font-size:12px;color:var(--accent);margin:14px 0 6px;font-weight:600;text-transform:uppercase;letter-spacing:0.5px}
+.params-box{padding:12px;background:var(--card2);border-radius:8px;border:1px solid var(--border);margin-top:6px}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header>
+  <h1>KameraIOT</h1>
+  <div class="conn"><div class="dot" id="connDot"></div><span id="connText">Baglaniyor...</span></div>
+</header>
+
+<div class="card" id="mqttCard">
+  <h2 onclick="toggleCard('mqttCard')">MQTT Baglantisi</h2>
+  <div class="body">
+    <label>Broker Host</label>
+    <input id="mqttHost" value="WriteMQTTHostHERE">
+    <label>Websocket Port (TLS)</label>
+    <input id="mqttPort" type="number" value="8884">
+    <label>Kullanici Adi</label>
+    <input id="mqttUser" value="admin">
+    <label>Sifre</label>
+    <input id="mqttPass" type="password">
+    <label>Cihaz ID</label>
+    <input id="deviceId" placeholder="esp...">
+    <div class="row" style="margin-top:14px">
+      <button class="btn full" onclick="connectMqtt()">Baglan</button>
+      <button class="btn full secondary" onclick="saveLocal()">Kaydet</button>
+    </div>
+  </div>
+</div>
+
+<div class="card setup-card" id="setupNotice">
+  <h2 style="cursor:default">Baslamadan Once</h2>
+  <p>MQTT bilgilerini doldur ve "Baglan" butonuna tikla.</p>
+</div>
+
+<div class="card" id="statusCard" style="display:none">
+  <h2 onclick="toggleCard('statusCard')">Durum</h2>
+  <div class="body">
+    <div class="st"><span class="l">WiFi</span><span class="v" id="sWifi">-</span></div>
+    <div class="st"><span class="l">Sinyal</span><span class="v" id="sRssi">-</span></div>
+    <div class="st"><span class="l">IP</span><span class="v" id="sIp">-</span></div>
+    <div class="st"><span class="l">Uptime</span><span class="v" id="sUptime">-</span></div>
+    <div class="st"><span class="l">Firmware</span><span class="v" id="sFw">-</span></div>
+    <div class="st"><span class="l">Bellek</span><span class="v" id="sHeap">-</span></div>
+  </div>
+</div>
+
+<div class="card" id="camerasCard" style="display:none">
+  <h2 onclick="toggleCard('camerasCard')">Kameralar</h2>
+  <div class="body">
+    <div id="camerasList"></div>
+    <button class="add-btn" onclick="openCamModal()">+ Yeni Kamera Ekle</button>
+  </div>
+</div>
+
+<div class="card" id="groupsCard" style="display:none">
+  <h2 onclick="toggleCard('groupsCard')">Gruplar</h2>
+  <div class="body">
+    <div id="groupsList"></div>
+    <button class="add-btn" onclick="openGrpModal()">+ Yeni Grup Ekle</button>
+  </div>
+</div>
+
+<div class="card" id="deviceCard" style="display:none">
+  <h2 onclick="toggleCard('deviceCard')">Cihaz Yonetimi</h2>
+  <div class="body">
+    <button class="btn full secondary" onclick="sendCmd('restart',{})">Cihazi Yeniden Baslat</button>
+    <button class="btn full danger" style="margin-top:10px" onclick="factoryReset()">Fabrika Ayarlarina Dondur</button>
+  </div>
+</div>
+
+</div>
+
+<!-- KAMERA MODAL -->
+<div class="modal-bg" id="camModal">
+<div class="modal">
+  <h3 id="camModalTitle">Kamera Ekle</h3>
+  <label>Kamera Adi</label>
+  <input id="mCName" placeholder="orn: Bahce Giris">
+  <label>IP Adresi (NVR IP'si)</label>
+  <input id="mCIp" placeholder="192.168.1.200">
+  <label>Port (Virtual Host portu)</label>
+  <input id="mCPort" type="number" placeholder="65011">
+  <div class="row">
+    <div><label>Kullanici Adi</label><input id="mCUser" value="admin"></div>
+    <div><label>Sifre</label><input id="mCPass" type="password"></div>
+  </div>
+  <div class="hint" id="passHint">Yeni kamera icin sifre gereklidir.</div>
+  <label style="margin-top:14px"><input id="mCEn" type="checkbox" style="width:auto;margin-right:8px" checked>Kamera aktif</label>
+  <div class="actions">
+    <button class="btn secondary" onclick="closeCamModal()">Iptal</button>
+    <button class="btn" onclick="saveCam()">Kaydet</button>
+  </div>
+</div>
+</div>
+
+<!-- GRUP MODAL -->
+<div class="modal-bg" id="grpModal">
+<div class="modal">
+  <h3 id="grpModalTitle">Grup Ekle</h3>
+
+  <label>Grup Adi</label>
+  <input id="mGName" placeholder="orn: Bahce Senkron">
+
+  <label style="margin-top:8px"><input id="mGEn" type="checkbox" style="width:auto;margin-right:8px" checked>Grup aktif</label>
+
+  <div class="section-header">Kameralar</div>
+
+  <label>Tetikleyici Kameralar (bu kameralar hareket algilarsa grup calisir)</label>
+  <div class="checklist" id="mGTriggers"></div>
+
+  <label>Isik Yakilacak Kameralar (grup calisinca bu kameralarin isigi yanar)</label>
+  <div class="checklist" id="mGLights"></div>
+
+  <div class="section-header">Isik Efekti: Flash + Sabit Yanma</div>
+  <div class="hint" style="margin-bottom:8px">Hareket algilandiginda: Radar flash (opsiyonel, tek seferlik) → Flashing → Sabit yanma. Hareket devam ederse sekans yenilenir ama radar tekrar yanmaz.</div>
+  <div class="params-box">
+    <label style="margin-top:0"><input id="mGRe" type="checkbox" style="width:auto;margin-right:8px" checked>Radar Flash Aktif (ilk tetiklemede parlak flash)</label>
+    <label>Radar Parlaklik % (varsayilan 100)</label>
+    <input id="mGRb" type="number" min="0" max="100" value="100">
+    <label style="margin-top:14px">Flashing Suresi (ms)</label>
+    <input id="mGFd" type="number" step="500" value="5000">
+    <label>Flash Araligi (ms) - acik/kapali gecis</label>
+    <input id="mGFi" type="number" step="50" value="500">
+    <label>Sabit Yanma Suresi (ms)</label>
+    <input id="mGSd" type="number" step="500" value="15000">
+  </div>
+
+  <div class="section-header">Gunduz / Gece</div>
+  <div class="row">
+    <div><label>Gunduz Baslangic</label>
+      <div class="row"><input id="mGDh" type="number" min="0" max="23" value="7"><input id="mGDm" type="number" min="0" max="59" value="30"></div>
+    </div>
+    <div><label>Gece Baslangic</label>
+      <div class="row"><input id="mGNh" type="number" min="0" max="23" value="19"><input id="mGNm" type="number" min="0" max="59" value="0"></div>
+    </div>
+  </div>
+
+  <div class="row" style="margin-top:8px">
+    <div><label>Gunduz Parlaklik %</label><input id="mGDbr" type="number" min="0" max="100" value="50"></div>
+    <div><label>Gece Parlaklik %</label><input id="mGNbr" type="number" min="0" max="100" value="4"></div>
+  </div>
+
+  <div class="actions">
+    <button class="btn secondary" onclick="closeGrpModal()">Iptal</button>
+    <button class="btn" onclick="saveGrp()">Kaydet</button>
+  </div>
+</div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+let client=null, deviceId='', topicBase='';
+let state={connected:false, config:{cameras:[],groups:[]}, status:{}};
+let editingCam=-1, editingGrp=-1;
+
+function saveLocal(){
+  const data={
+    host:document.getElementById('mqttHost').value,
+    port:document.getElementById('mqttPort').value,
+    user:document.getElementById('mqttUser').value,
+    pass:document.getElementById('mqttPass').value,
+    device:document.getElementById('deviceId').value
+  };
+  localStorage.setItem('kameraiot-mqtt',JSON.stringify(data));
+  toast('Kaydedildi','ok');
+}
+function loadLocal(){
+  const s=localStorage.getItem('kameraiot-mqtt');
+  if(s){
+    const d=JSON.parse(s);
+    document.getElementById('mqttHost').value=d.host||'';
+    document.getElementById('mqttPort').value=d.port||'8884';
+    document.getElementById('mqttUser').value=d.user||'';
+    document.getElementById('mqttPass').value=d.pass||'';
+    document.getElementById('deviceId').value=d.device||'';
+  }
+}
+
+function connectMqtt(){
+  const host=document.getElementById('mqttHost').value;
+  const port=document.getElementById('mqttPort').value;
+  const user=document.getElementById('mqttUser').value;
+  const pass=document.getElementById('mqttPass').value;
+  deviceId=document.getElementById('deviceId').value.trim();
+  if(!deviceId){toast('Device ID gerekli','err');return}
+
+  topicBase='kameraiot/'+deviceId+'/';
+  const url='wss://'+host+':'+port+'/mqtt';
+
+  if(client) client.end(true);
+  updateConn(false,'Baglaniyor...');
+
+  client=mqtt.connect(url,{username:user,password:pass,clientId:'web-'+Math.random().toString(16).substr(2,8),clean:true,reconnectPeriod:5000});
+
+  client.on('connect',()=>{
+    updateConn(true,'Bagli');
+    client.subscribe(topicBase+'+');
+    client.subscribe(topicBase+'event/+');
+    sendCmd('getConfig',{});
+    sendCmd('getStatus',{});
+    document.getElementById('setupNotice').style.display='none';
+    document.getElementById('statusCard').style.display='block';
+    document.getElementById('camerasCard').style.display='block';
+    document.getElementById('groupsCard').style.display='block';
+    document.getElementById('deviceCard').style.display='block';
+    toast('Bagli','ok');
+  });
+  client.on('error',e=>{updateConn(false,'Hata');toast('MQTT hata: '+e.message,'err')});
+  client.on('close',()=>updateConn(false,'Kopuk'));
+  client.on('message',(topic,message)=>{
+    const sub=topic.replace(topicBase,'');
+    handleMsg(sub,message.toString());
+  });
+}
+
+function handleMsg(sub,msg){
+  if(sub==='config'){
+    try{state.config=JSON.parse(msg);renderCameras();renderGroups()}catch(e){}
+  }else if(sub==='status'){
+    try{state.status=JSON.parse(msg);renderStatus();renderCameras();renderGroups()}catch(e){}
+  }else if(sub==='event/motion'){
+    try{const e=JSON.parse(msg);toast('Hareket: '+e.camera+' → '+e.groupName,'warn')}catch(e){}
+  }else if(sub==='online'){
+    if(msg==='true')toast('Cihaz online','ok');
+    else if(msg==='false')toast('Cihaz offline','err');
+  }
+}
+
+function sendCmd(cmd,payload){
+  if(!client||!client.connected){toast('MQTT bagli degil','err');return}
+  client.publish(topicBase+'cmd/'+cmd,JSON.stringify(payload||{}));
+}
+function updateConn(ok,text){
+  document.getElementById('connDot').classList.toggle('on',ok);
+  document.getElementById('connText').textContent=text;
+}
+
+function renderStatus(){
+  const s=state.status;
+  document.getElementById('sWifi').innerHTML=s.wifi?'<span class="badge ok">Bagli</span>':'<span class="badge err">Kopuk</span>';
+  document.getElementById('sRssi').textContent=(s.rssi||0)+' dBm';
+  document.getElementById('sIp').textContent=s.ip||'-';
+  document.getElementById('sFw').textContent='v'+(s.fw||'-');
+  document.getElementById('sHeap').textContent=s.heap?Math.round(s.heap/1024)+' KB':'-';
+  if(s.uptime!==undefined){
+    const h=Math.floor(s.uptime/3600);
+    const m=Math.floor((s.uptime%3600)/60);
+    document.getElementById('sUptime').textContent=h+'sa '+m+'dk';
+  }
+}
+
+function renderCameras(){
+  const list=document.getElementById('camerasList');
+  const cams=state.config.cameras||[];
+  const statCams=state.status.cameras||[];
+  list.innerHTML='';
+
+  cams.forEach((c,i)=>{
+    const st=statCams.find(x=>x.idx===i)||{};
+    let statusBadge='';
+    if(!c.en) statusBadge='<span class="badge err">KAPALI</span>';
+    else if(st.locked) statusBadge='<span class="badge err">KILITLI</span>';
+    else if(st.streamOk) statusBadge='<span class="badge ok">AKTIF</span>';
+    else if(st.fails>0) statusBadge='<span class="badge warn">HATA x'+st.fails+'</span>';
+
+    const inGroups=(state.config.groups||[]).filter(g=>
+      (g.tc||[]).includes(i)||(g.lc||[]).includes(i)
+    ).map(g=>g.name).join(', ')||'-';
+
+    const div=document.createElement('div');
+    div.className='item';
+    div.innerHTML=`
+      <h3>
+        <span>${c.name} ${statusBadge}</span>
+        <span class="actions">
+          <button class="btn sm secondary" onclick="openCamModal(${i})">Duzenle</button>
+          <button class="btn sm danger" onclick="delCam(${i})">Sil</button>
+        </span>
+      </h3>
+      <div class="st"><span class="l">Endpoint</span><span class="v">${c.ip}:${c.port}</span></div>
+      <div class="st"><span class="l">Kullanilan Gruplar</span><span class="v">${inGroups}</span></div>
+    `;
+    list.appendChild(div);
+  });
+
+  if(cams.length===0) list.innerHTML='<div class="empty">Henuz kamera yok.</div>';
+}
+
+function renderGroups(){
+  const list=document.getElementById('groupsList');
+  const grps=state.config.groups||[];
+  const cams=state.config.cameras||[];
+  const statGrps=state.status.groups||[];
+  list.innerHTML='';
+
+  grps.forEach((g,i)=>{
+    const st=statGrps.find(x=>x.idx===i)||{};
+    const trigNames=(g.tc||[]).map(idx=>cams[idx]?cams[idx].name:'?').join(', ')||'-';
+    const lightNames=(g.lc||[]).map(idx=>cams[idx]?cams[idx].name:'?').join(', ')||'-';
+
+    const div=document.createElement('div');
+    div.className='item';
+    div.innerHTML=`
+      <h3>
+        <span>${g.name} ${st.active?'<span class="badge warn">CALISIYOR</span>':''} ${!g.en?'<span class="badge err">PASIF</span>':''}</span>
+        <span class="actions">
+          <button class="btn sm" onclick="triggerGrp(${i})">Tetikle</button>
+          <button class="btn sm secondary" onclick="openGrpModal(${i})">Duzenle</button>
+          <button class="btn sm danger" onclick="delGrp(${i})">Sil</button>
+        </span>
+      </h3>
+      <div class="st"><span class="l">Tetikleyiciler</span><span class="v" style="text-align:right;max-width:60%">${trigNames}</span></div>
+      <div class="st"><span class="l">Isik Kameralari</span><span class="v" style="text-align:right;max-width:60%">${lightNames}</span></div>
+      <div class="st"><span class="l">Zaman</span><span class="v">${st.isDay?'Gunduz %'+g.dbr:'Gece %'+g.nbr}</span></div>
+      <div class="st"><span class="l">Anlik Parlaklik</span><span class="v">%${st.brightness||0}</span></div>
+    `;
+    list.appendChild(div);
+  });
+
+  if(grps.length===0) list.innerHTML='<div class="empty">Henuz grup yok. Once kamera ekleyip sonra grup olustur.</div>';
+}
+
+function openCamModal(idx){
+  editingCam=idx!==undefined?idx:-1;
+  document.getElementById('camModalTitle').textContent=editingCam>=0?'Kamera Duzenle':'Kamera Ekle';
+  if(editingCam>=0){
+    const c=state.config.cameras[editingCam];
+    document.getElementById('mCName').value=c.name;
+    document.getElementById('mCIp').value=c.ip;
+    document.getElementById('mCPort').value=c.port;
+    document.getElementById('mCUser').value=c.user;
+    document.getElementById('mCPass').value='';
+    document.getElementById('mCEn').checked=c.en;
+    document.getElementById('passHint').textContent='Sifreyi bos birakirsan onceki sifre korunur.';
+  }else{
+    document.getElementById('mCName').value='';
+    document.getElementById('mCIp').value='192.168.1.200';
+    document.getElementById('mCPort').value='';
+    document.getElementById('mCUser').value='admin';
+    document.getElementById('mCPass').value='';
+    document.getElementById('mCEn').checked=true;
+    document.getElementById('passHint').textContent='Yeni kamera icin sifre gereklidir.';
+  }
+  document.getElementById('camModal').classList.add('show');
+}
+function closeCamModal(){document.getElementById('camModal').classList.remove('show')}
+
+function saveCam(){
+  const cam={
+    name:document.getElementById('mCName').value||'Kamera',
+    ip:document.getElementById('mCIp').value,
+    port:+document.getElementById('mCPort').value,
+    user:document.getElementById('mCUser').value||'admin',
+    pass:document.getElementById('mCPass').value,
+    en:document.getElementById('mCEn').checked
+  };
+  if(!cam.ip||!cam.port){toast('IP ve port gerekli','err');return}
+  if(editingCam<0 && !cam.pass){toast('Sifre gerekli','err');return}
+  if(!state.config.cameras) state.config.cameras=[];
+  if(editingCam>=0) state.config.cameras[editingCam]=cam;
+  else state.config.cameras.push(cam);
+  pushConfig();
+  closeCamModal();
+}
+
+function delCam(idx){
+  if(!confirm('Kamera silinsin mi?'))return;
+  (state.config.groups||[]).forEach(g=>{
+    g.tc=(g.tc||[]).filter(x=>x!==idx).map(x=>x>idx?x-1:x);
+    g.lc=(g.lc||[]).filter(x=>x!==idx).map(x=>x>idx?x-1:x);
+  });
+  state.config.cameras.splice(idx,1);
+  pushConfig();
+}
+
+function openGrpModal(idx){
+  editingGrp=idx!==undefined?idx:-1;
+  document.getElementById('grpModalTitle').textContent=editingGrp>=0?'Grup Duzenle':'Grup Ekle';
+  const cams=state.config.cameras||[];
+
+  const trigList=document.getElementById('mGTriggers');
+  trigList.innerHTML='';
+  if(cams.length===0){
+    trigList.innerHTML='<div class="empty" style="padding:10px">Once kamera eklemelisin</div>';
+  }else{
+    cams.forEach((c,i)=>{
+      const div=document.createElement('label');
+      div.className='check-item';
+      div.innerHTML=`<input type="checkbox" value="${i}" class="mGTriggerCb">${c.name} <span style="color:var(--muted);font-size:11px">(${c.ip}:${c.port})</span>`;
+      trigList.appendChild(div);
+    });
+  }
+
+  const lightList=document.getElementById('mGLights');
+  lightList.innerHTML='';
+  cams.forEach((c,i)=>{
+    const div=document.createElement('label');
+    div.className='check-item';
+    div.innerHTML=`<input type="checkbox" value="${i}" class="mGLightCb">${c.name} <span style="color:var(--muted);font-size:11px">(${c.ip}:${c.port})</span>`;
+    lightList.appendChild(div);
+  });
+
+  if(editingGrp>=0){
+    const g=state.config.groups[editingGrp];
+    document.getElementById('mGName').value=g.name;
+    document.getElementById('mGEn').checked=g.en;
+    document.getElementById('mGFd').value=g.fd;
+    document.getElementById('mGSd').value=g.sd;
+    document.getElementById('mGFi').value=g.fi;
+    document.getElementById('mGRe').checked=g.re!==false;
+    document.getElementById('mGRb').value=g.rb||100;
+    document.getElementById('mGDh').value=g.dh;
+    document.getElementById('mGDm').value=g.dm;
+    document.getElementById('mGNh').value=g.nh;
+    document.getElementById('mGNm').value=g.nm;
+    document.getElementById('mGDbr').value=g.dbr;
+    document.getElementById('mGNbr').value=g.nbr;
+    (g.tc||[]).forEach(i=>{const el=trigList.querySelector(`input[value="${i}"]`);if(el)el.checked=true});
+    (g.lc||[]).forEach(i=>{const el=lightList.querySelector(`input[value="${i}"]`);if(el)el.checked=true});
+  }else{
+    document.getElementById('mGName').value='';
+    document.getElementById('mGEn').checked=true;
+    document.getElementById('mGFd').value=5000;
+    document.getElementById('mGSd').value=15000;
+    document.getElementById('mGFi').value=500;
+    document.getElementById('mGRe').checked=true;
+    document.getElementById('mGRb').value=100;
+    document.getElementById('mGDh').value=7;
+    document.getElementById('mGDm').value=30;
+    document.getElementById('mGNh').value=19;
+    document.getElementById('mGNm').value=0;
+    document.getElementById('mGDbr').value=50;
+    document.getElementById('mGNbr').value=4;
+  }
+  document.getElementById('grpModal').classList.add('show');
+}
+
+function closeGrpModal(){document.getElementById('grpModal').classList.remove('show')}
+
+function saveGrp(){
+  const tc=[],lc=[];
+  document.querySelectorAll('.mGTriggerCb').forEach(cb=>{if(cb.checked)tc.push(+cb.value)});
+  document.querySelectorAll('.mGLightCb').forEach(cb=>{if(cb.checked)lc.push(+cb.value)});
+  if(lc.length===0){toast('En az bir isik kamerasi secmelisin','err');return}
+
+  const grp={
+    name:document.getElementById('mGName').value||'Grup',
+    en:document.getElementById('mGEn').checked,
+    fd:+document.getElementById('mGFd').value,
+    sd:+document.getElementById('mGSd').value,
+    fi:+document.getElementById('mGFi').value,
+    re:document.getElementById('mGRe').checked,
+    rb:+document.getElementById('mGRb').value,
+    dbr:+document.getElementById('mGDbr').value,
+    nbr:+document.getElementById('mGNbr').value,
+    dh:+document.getElementById('mGDh').value,
+    dm:+document.getElementById('mGDm').value,
+    nh:+document.getElementById('mGNh').value,
+    nm:+document.getElementById('mGNm').value,
+    tc:tc,lc:lc
+  };
+  if(!state.config.groups) state.config.groups=[];
+  if(editingGrp>=0) state.config.groups[editingGrp]=grp;
+  else state.config.groups.push(grp);
+  pushConfig();
+  closeGrpModal();
+}
+
+function delGrp(idx){
+  if(!confirm('Grup silinsin mi?'))return;
+  state.config.groups.splice(idx,1);
+  pushConfig();
+}
+
+function triggerGrp(idx){
+  sendCmd('trigger',{group:idx});
+  toast('Tetiklendi','ok');
+}
+
+function pushConfig(){
+  sendCmd('config',state.config);
+  toast('Ayarlar gonderildi','ok');
+}
+
+function factoryReset(){
+  if(!confirm('Tum cihaz ayarlari silinecek!'))return;
+  if(!confirm('Son uyari!'))return;
+  sendCmd('reset',{});
+  toast('Fabrika sifirlama gonderildi','warn');
+}
+
+function toggleCard(id){document.getElementById(id).classList.toggle('collapsed')}
+
+function toast(text,type){
+  const t=document.getElementById('toast');
+  t.textContent=text;
+  t.className='toast show '+(type||'');
+  setTimeout(()=>t.classList.remove('show'),3000);
+}
+
+loadLocal();
+</script>
+</body>
+</html>
