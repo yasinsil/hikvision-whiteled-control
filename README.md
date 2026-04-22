@@ -73,7 +73,7 @@ configured as follows:
 -   Supplement Light Mode: White Light (Manual)\
 -   White Light Brightness: 0
 
-  ![Test Image 4]([https://github.com/tograh/testrepository/3DTest.png](https://github.com/yasinsil/hikvision-whiteled-control/blob/main/screenshots/groupsettings.png))
+  ![Test Image 4](https://raw.githubusercontent.com/yasinsil/hikvision-whiteled-control/refs/heads/main/screenshots/groupsettings.png)
 
 ### ESP32 Configuration
 
