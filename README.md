@@ -50,7 +50,6 @@ light output.
 ## Features
 
 -   Flash + steady mode\
--   Sequential mode\
 -   Day/night brightness control\
 -   Multiple camera groups\
 -   MQTT remote control\
@@ -73,6 +72,8 @@ configured as follows:
 -   Night Mode: Forced Night\
 -   Supplement Light Mode: White Light (Manual)\
 -   White Light Brightness: 0
+
+  ![Test Image 4]([https://github.com/tograh/testrepository/3DTest.png](https://github.com/yasinsil/hikvision-whiteled-control/blob/main/screenshots/groupsettings.png))
 
 ### ESP32 Configuration
 
